@@ -30,6 +30,7 @@ type metricCategory interface {
 
 // IMPORTANT!!!!
 // In order for Json to marshal the members must be public (aka capitalized)
+//TODO: rip these out of main. They don't belong here
 type metricCategoryOnly struct {
 	Category string
 }
@@ -38,8 +39,6 @@ func (m metricCategoryOnly) GetCategory() string {
 	return m.Category
 }
 
-// IMPORTANT!!!!
-// In order for Json to marshal the members must be public (aka capitalized)
 type metricCategoryWithSubCategory struct {
 	Category string
 	SubCategory []string
@@ -71,39 +70,71 @@ func main() {
 
 	go startHttp(messages)
 
-	//TODO: process all event metrics
+	//TODO: process all event metrics that come from loggregator
+	//TODO: add type of event to table
 	for msg := range msgChan {
-		vm := msg.GetValueMetric()
-		if vm == nil {
-			continue
-		}
 		origin := msg.GetOrigin()
+		switch msg.GetEventType() {
+		case events.Envelope_ValueMetric:
+			vm := msg.GetValueMetric()
+			if vm == nil { continue }
 
-		category, subCategory := parseMetric(*vm.Name)
+			category, subCategory := parseMetric(*vm.Name)
 
-		index := indexOf(messages[origin], category)
-		if index >= 0 {
-			metricCategoryGroup := messages[origin][index]
-			switch f := metricCategoryGroup.(type) {
-			case *metricCategoryWithSubCategory:
-				if len(subCategory) > 0 {
-					if contains(f.SubCategory, subCategory) == false {
-						f.SubCategory = append(f.SubCategory, subCategory)
+			index := indexOf(messages[origin], category)
+			if index >= 0 {
+				metricCategoryGroup := messages[origin][index]
+				switch f := metricCategoryGroup.(type) {
+				case *metricCategoryWithSubCategory:
+					if len(subCategory) > 0 {
+						if contains(f.SubCategory, subCategory) == false {
+							f.SubCategory = append(f.SubCategory, subCategory)
+						}
 					}
+					break
+				default:
 				}
-				break
-			default:
-			}
-		} else {
-			if len(subCategory) > 0 {
-				messages[origin] = append(messages[origin], &metricCategoryWithSubCategory{
-					Category: category,
-					SubCategory:    []string{subCategory},
-				})
 			} else {
-				messages[origin] = append(messages[origin], &metricCategoryOnly{
-					Category: category,
-				})
+				if len(subCategory) > 0 {
+					messages[origin] = append(messages[origin], &metricCategoryWithSubCategory{
+						Category: category,
+						SubCategory:    []string{subCategory},
+					})
+				} else {
+					messages[origin] = append(messages[origin], &metricCategoryOnly{
+						Category: category,
+					})
+				}
+			}
+		case events.Envelope_CounterEvent:
+			ce := msg.GetCounterEvent()
+			if ce == nil { continue }
+
+			category, subCategory := parseMetric(*ce.Name)
+			index := indexOf(messages[origin], category)
+			if index >= 0 {
+				metricCategoryGroup := messages[origin][index]
+				switch f := metricCategoryGroup.(type) {
+				case *metricCategoryWithSubCategory:
+					if len(subCategory) > 0 {
+						if contains(f.SubCategory, subCategory) == false {
+							f.SubCategory = append(f.SubCategory, subCategory)
+						}
+					}
+					break
+				default:
+				}
+			} else {
+				if len(subCategory) > 0 {
+					messages[origin] = append(messages[origin], &metricCategoryWithSubCategory{
+						Category: category,
+						SubCategory:    []string{subCategory},
+					})
+				} else {
+					messages[origin] = append(messages[origin], &metricCategoryOnly{
+						Category: category,
+					})
+				}
 			}
 		}
 	}
@@ -122,6 +153,16 @@ func indexOf(metricsCollected []metricCategory, key string) int {
 	for index, entry := range metricsCollected {
 		metricCategoryVar := entry
 		if metricCategoryVar.GetCategory() == key {
+			return index
+		}
+	}
+	return -1
+}
+
+func indexOfType(metricsCollected []events.Envelope_EventType, eventType events.Envelope_EventType) int{
+	for index, entry := range metricsCollected {
+		metricTypeVar := entry
+		if metricTypeVar == eventType {
 			return index
 		}
 	}
@@ -208,18 +249,6 @@ func (m metricsListingHandler) render(res http.ResponseWriter) {
 		return template.HTML(td)
 	}
 
-	buildOriginRowSpan := func(indexOfSlice int, origin string, categories []metricCategory) template.HTML {
-		td := ""
-		if (indexOfSlice == 0) {
-			if (len(categories) > 1) {
-				td = fmt.Sprintf("<td rowspan=%d>%s</td>", len(categories), origin)
-			} else {
-				td = fmt.Sprintf("<td>%s</td>", origin)
-			}
-		}
-		return template.HTML(td)
-	}
-
 	totalMetrics := func(metrics map[string][]metricCategory) int {
 		total := 0
 		for _, origin := range metrics {
@@ -239,7 +268,20 @@ func (m metricsListingHandler) render(res http.ResponseWriter) {
 		return total
 	}
 
+	buildOriginRowSpan := func(indexOfSlice int, origin string, categories []metricCategory) template.HTML {
+		td := ""
+		if (indexOfSlice == 0) {
+			if (len(categories) > 1) {
+				td = fmt.Sprintf("<td rowspan=%d>%s</td>", len(categories), origin)
+			} else {
+				td = fmt.Sprintf("<td>%s</td>", origin)
+			}
+		}
+		return template.HTML(td)
+	}
+
 	//TODO: put in html file and use http/template correctly
+	//TODO: list all metricTypes for a particular origin(Need another row span *sigh*
 	htmlTemplate := `<!DOCTYPE html>
 <html>
 <head></head>
@@ -252,7 +294,8 @@ func (m metricsListingHandler) render(res http.ResponseWriter) {
 <tr>
 {{ buildOriginRowSpan $counter $index $item  }}
 {{printCategory $element}}
-{{printSubCategory $element}}</tr>
+{{printSubCategory $element}}
+</tr>
 {{end}}
 {{end}}</table></body>
 </html>`
