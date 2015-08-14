@@ -15,7 +15,9 @@ import (
 	"html/template"
 )
 
-// FUTURE if time, removing metrics after TTL?
+// TODO: logging
+// TODO: some kind of ttl
+// TODO: ltc release and bosh release
 
 var dopplerAddress = os.Getenv("DOPPLER_ADDR") // should look like ws://host:port
 var authToken = os.Getenv("CF_ACCESS_TOKEN")   // use $(cf oauth-token | grep bearer)
@@ -47,6 +49,7 @@ func (m metricCategoryWithSubCategory) GetCategory() string {
 	return m.Category
 }
 
+//TODO: give main simple functionality
 func main() {
 	var messages map[string][]metricCategory // [origin]{metricCategory To []names}]
 	messages = make(map[string][]metricCategory)
@@ -68,6 +71,7 @@ func main() {
 
 	go startHttp(messages)
 
+	//TODO: process all event metrics
 	for msg := range msgChan {
 		vm := msg.GetValueMetric()
 		if vm == nil {
@@ -179,6 +183,7 @@ func (m metricsListingHandler) render(res http.ResponseWriter) {
 		return template.HTML(td)
 	}
 
+	//TODO: test this using a bosh deployment instead of lattice (a.b.c.d... present)
 	printSubCategory := func(typeInterface metricCategory) template.HTML {
 		td := ""
 		switch f := typeInterface.(type) {
@@ -234,6 +239,7 @@ func (m metricsListingHandler) render(res http.ResponseWriter) {
 		return total
 	}
 
+	//TODO: put in html file and use http/template correctly
 	htmlTemplate := `<!DOCTYPE html>
 <html>
 <head></head>
