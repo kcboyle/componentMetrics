@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"os"
 
-	"net"
 	"net/http"
 
 	"strings"
 
-	"github.com/cloudfoundry/noaa"
-	"github.com/cloudfoundry/sonde-go/events"
 	"html/template"
+
+	"github.com/kicombs/componentMetrics/Godeps/_workspace/src/github.com/cloudfoundry/noaa"
+	"github.com/kicombs/componentMetrics/Godeps/_workspace/src/github.com/cloudfoundry/sonde-go/events"
 )
 
 // FUTURE if time, removing metrics after TTL?
@@ -39,7 +39,7 @@ func (m metricCategoryOnly) GetCategory() string {
 // IMPORTANT!!!!
 // In order for Json to marshal the members must be public (aka capitalized)
 type metricCategoryWithSubCategory struct {
-	Category string
+	Category    string
 	SubCategory []string
 }
 
@@ -87,14 +87,13 @@ func main() {
 						f.SubCategory = append(f.SubCategory, subCategory)
 					}
 				}
-				break
 			default:
 			}
 		} else {
 			if len(subCategory) > 0 {
 				messages[origin] = append(messages[origin], &metricCategoryWithSubCategory{
-					Category: category,
-					SubCategory:    []string{subCategory},
+					Category:    category,
+					SubCategory: []string{subCategory},
 				})
 			} else {
 				messages[origin] = append(messages[origin], &metricCategoryOnly{
@@ -143,7 +142,9 @@ func (c ConsoleDebugPrinter) Print(title, dump string) {
 
 func startHttp(messages map[string][]metricCategory) {
 	http.Handle("/messages", NewMetricsListingHandler(messages))
-	err := http.ListenAndServe(net.JoinHostPort("", fmt.Sprintf("%d", 8818)), nil)
+
+	port := os.Getenv("PORT")
+	err := http.ListenAndServe(fmt.Sprintf(":%v", port), nil)
 	if err != nil {
 		println("Proxy Server Error", err)
 		panic("We could not start the HTTP listener")
@@ -168,13 +169,13 @@ func (m metricsListingHandler) render(res http.ResponseWriter) {
 	printCategory := func(typeInterface metricCategory) template.HTML {
 		td := ""
 		switch f := typeInterface.(type) {
-			case *metricCategoryWithSubCategory:
-				td = fmt.Sprintf("<td>%s</td>", f.Category)
-				break
-			case *metricCategoryOnly:
-				td = fmt.Sprintf("<td style=\"border-right:none\">%s</td>", f.Category)
-				break
-			default:
+		case *metricCategoryWithSubCategory:
+			td = fmt.Sprintf("<td>%s</td>", f.Category)
+			break
+		case *metricCategoryOnly:
+			td = fmt.Sprintf("<td style=\"border-right:none\">%s</td>", f.Category)
+			break
+		default:
 		}
 		return template.HTML(td)
 	}
@@ -182,31 +183,31 @@ func (m metricsListingHandler) render(res http.ResponseWriter) {
 	printSubCategory := func(typeInterface metricCategory) template.HTML {
 		td := ""
 		switch f := typeInterface.(type) {
-			case *metricCategoryWithSubCategory:
-				t := "<td><table border=0>"
-				for _, subCat := range f.SubCategory {
-					base, sub := parseMetric(subCat)
-					t += fmt.Sprintf("<tr><td>%s", base)
-					for len(sub) > 0 {
-						t += fmt.Sprintf("<table border =0><tr><td>%s</td></tr>", sub)
-						base, sub = parseMetric(subCat)
-					}
-					t += fmt.Sprintf("</td></tr>")
+		case *metricCategoryWithSubCategory:
+			t := "<td><table border=0>"
+			for _, subCat := range f.SubCategory {
+				base, sub := parseMetric(subCat)
+				t += fmt.Sprintf("<tr><td>%s", base)
+				for len(sub) > 0 {
+					t += fmt.Sprintf("<table border =0><tr><td>%s</td></tr>", sub)
+					base, sub = parseMetric(subCat)
 				}
-				td = t + "</table></td>"
-				break
-			case *metricCategoryOnly:
-				td = "<td style=\"border-left:none\"></td>"
+				t += fmt.Sprintf("</td></tr>")
+			}
+			td = t + "</table></td>"
 			break
-			default:
+		case *metricCategoryOnly:
+			td = "<td style=\"border-left:none\"></td>"
+			break
+		default:
 		}
 		return template.HTML(td)
 	}
 
 	buildOriginRowSpan := func(indexOfSlice int, origin string, categories []metricCategory) template.HTML {
 		td := ""
-		if (indexOfSlice == 0) {
-			if (len(categories) > 1) {
+		if indexOfSlice == 0 {
+			if len(categories) > 1 {
 				td = fmt.Sprintf("<td rowspan=%d>%s</td>", len(categories), origin)
 			} else {
 				td = fmt.Sprintf("<td>%s</td>", origin)
@@ -220,13 +221,13 @@ func (m metricsListingHandler) render(res http.ResponseWriter) {
 		for _, origin := range metrics {
 			for _, categoryGroup := range origin {
 				switch f := categoryGroup.(type) {
-					case *metricCategoryWithSubCategory:
+				case *metricCategoryWithSubCategory:
 					total += len(f.SubCategory)
 					break
-					case *metricCategoryOnly:
+				case *metricCategoryOnly:
 					total++
 					break
-					default:
+				default:
 				}
 			}
 
@@ -252,9 +253,9 @@ func (m metricsListingHandler) render(res http.ResponseWriter) {
 </html>`
 
 	t := template.New("t").Funcs(template.FuncMap{"printCategory": printCategory,
-												  "printSubCategory": printSubCategory,
-												  "buildOriginRowSpan": buildOriginRowSpan,
-												  "totalMetrics": totalMetrics})
+		"printSubCategory":   printSubCategory,
+		"buildOriginRowSpan": buildOriginRowSpan,
+		"totalMetrics":       totalMetrics})
 
 	t, err := t.Parse(htmlTemplate)
 	if err != nil {
